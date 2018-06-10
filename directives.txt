@@ -1,0 +1,14 @@
+#if
+#else
+#elif
+#endif
+#define
+#undef
+#warning
+#error
+#line
+#region
+#endregion
+#pragma
+#pragma warning
+#pragma checksum
