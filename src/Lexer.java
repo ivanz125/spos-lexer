@@ -67,16 +67,18 @@ public class Lexer {
             switch (c) {
                 // Literal
                 case '"':
-                    return getLiteralToken();
+                    return getLiteralToken(false);
                 // Char
                 case '\'':
                     return getCharToken();
                 // Comment
                 case '/':
-                    if (queue.peek() == '/' || queue.peek() == '*') return getCommentToken();
+                    if (queue.peek() != null && (queue.peek() == '/' || queue.peek() == '*')) return getCommentToken();
                     break;
                 case '#':
                     return getDirectiveToken();
+                case '@':
+                    return getVerbatimToken();
             }
 
             // Operator
@@ -94,10 +96,11 @@ public class Lexer {
         return null;
     }
 
-    private Token getLiteralToken() {
+    private Token getLiteralToken(boolean multiline) {
         if (lexemeBuffer.length() > 1) lexemeBuffer = lexemeBuffer.substring(lexemeBuffer.length() - 1, lexemeBuffer.length());
         char c;
 
+        boolean error = false;
         while (!queue.isEmpty()) {
             c = queue.peek();
             appendLexeme(c);
@@ -110,12 +113,27 @@ public class Lexer {
                 // End of string
                 else {
                     //lexemeBuffer = lexemeBuffer.substring(0, lexemeBuffer.length() - 1);
-                    break;
+                    return error ? new Token(TokenType.ERROR, lexemeBuffer) : new Token(TokenType.LITERAL, lexemeBuffer);
                 }
+            }
+            else if (lang.isLineBreak(c)) {
+                if (!multiline) error = true;
             }
         }
 
-        return new Token(TokenType.LITERAL, lexemeBuffer);
+        return new Token(TokenType.ERROR, lexemeBuffer);
+    }
+
+    private Token getVerbatimToken() {
+        if (lexemeBuffer.length() > 1) lexemeBuffer = lexemeBuffer.substring(lexemeBuffer.length() - 1, lexemeBuffer.length());
+        if (queue.peek() == null) return new Token(TokenType.ERROR, lexemeBuffer);
+
+        if (queue.peek() != '@' && lang.isIdStart(queue.peek())) return getIdOrKeywordToken(2);
+        if (queue.peek() == '"') {
+            appendLexeme(queue.peek());
+            return getLiteralToken(true);
+        }
+        return new Token(TokenType.ERROR, lexemeBuffer);
     }
 
     private Token getCharToken() {
@@ -135,6 +153,9 @@ public class Lexer {
                 else {
                     break;
                 }
+            }
+            else if (queue.isEmpty()) {
+                return new Token(TokenType.ERROR, lexemeBuffer);
             }
         }
 
@@ -239,7 +260,8 @@ public class Lexer {
 
             appendLexeme(c);
 
-            if (queue.peek() == null) return new Token(TokenType.COMMENT, lexemeBuffer);
+            if (queue.peek() == null && nextState == 2 || nextState == 5) return new Token(TokenType.COMMENT, lexemeBuffer);
+            else if (queue.peek() == null) return new Token(TokenType.ERROR, lexemeBuffer);
             state = nextState;
         }
     }
@@ -327,24 +349,7 @@ public class Lexer {
     private Token getOperatorToken() {
         if (lexemeBuffer.length() > 1) lexemeBuffer = lexemeBuffer.substring(lexemeBuffer.length() - 1, lexemeBuffer.length());
 
-        int state = 1;
-        while (true) {
-            char c = queue.peek();
-
-            switch (state) {
-                // Possible operator
-                case 1:
-                    if (lang.isOperatorChar(c)) appendLexeme(c);
-                    else state = 2;
-                    break;
-
-                // Possible operator finished
-                case 2:
-                    if (lang.isOperator(lexemeBuffer)) return new Token(TokenType.OPERATOR, lexemeBuffer);
-                    else return new Token(TokenType.ERROR, lexemeBuffer);
-            }
-
-            if (queue.peek() == null) return new Token(TokenType.ERROR, lexemeBuffer);
-        }
+        while (lang.isOperator(lexemeBuffer + queue.peek())) appendLexeme(queue.peek());
+        return new Token(TokenType.OPERATOR, lexemeBuffer);
     }
 }
